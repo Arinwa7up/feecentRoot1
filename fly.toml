@@ -1,0 +1,29 @@
+[build]
+  builder = "paketobuildpacks/builder-jammy-base"
+
+[[build.buildpacks]]
+  uri = "gcr.io/paketo-buildpacks/nodejs"
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  IS_FLYIO = "true"
+
+[[services]]
+  http_checks = []
+  internal_port = 3000
+  processes = ["app"]
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = "80"
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = "443"
+
+  [[services.tcp_checks]]
+    interval = 15000
+    timeout = 2000
+    grace_period = "30s"
