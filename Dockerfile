@@ -1,17 +1,15 @@
-# Dockerfile
-FROM node:18-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# Copy package files first (for better caching)
+# Install deps first for better layer caching
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-# Copy the rest of the application
+# Copy the rest of the app
 COPY . .
 
-# Expose the port
+ENV NODE_ENV=production
 EXPOSE 3000
 
-# Start the application
-CMD ["node", "server.js"]
+CMD ["node", "index.js"]

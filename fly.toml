@@ -1,8 +1,5 @@
 app = "feecentroot1"
 
-[build]
-  builder = "buildpacks/buildpacks:20"
-
 [env]
   NODE_ENV = "production"
 
@@ -15,7 +12,7 @@ app = "feecentroot1"
 [[services]]
   internal_port = 3000
   processes = ["app"]
-  
+
   [services.concurrency]
     type = "connections"
     hard_limit = 100
