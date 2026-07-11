@@ -1,29 +1,30 @@
-[build]
-  builder = "paketobuildpacks/builder-jammy-base"
+app = "feecentroot1"
 
-[[build.buildpacks]]
-  uri = "gcr.io/paketo-buildpacks/nodejs"
+[build]
+  builder = "buildpacks/buildpacks:20"
 
 [env]
-  PORT = "3000"
   NODE_ENV = "production"
-  IS_FLYIO = "true"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  min_machines_running = 1
 
 [[services]]
-  http_checks = []
   internal_port = 3000
   processes = ["app"]
-  protocol = "tcp"
+  
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
 
   [[services.ports]]
     handlers = ["http"]
-    port = "80"
+    port = 80
 
   [[services.ports]]
     handlers = ["tls", "http"]
-    port = "443"
-
-  [[services.tcp_checks]]
-    interval = 15000
-    timeout = 2000
-    grace_period = "30s"
+    port = 443
