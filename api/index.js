@@ -599,11 +599,11 @@ async function sendActiveConversationsToAdmin() {
 }
 
 // Replace app.listen with server.listen
-const PORT = process.env.PORT || 3000;
+/*const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Socket.IO enabled for real-time chat`);
-});
+});*/
 
 // Function to send push notification to user
 async function sendPushNotificationToUser(userId, title, body, data = {}) {
@@ -21057,7 +21057,7 @@ createDefaultAdmin();*/
 
 // ==================== SERVER STARTUP ====================
 
-//const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 // For Fly.io / self-hosted environments
 if (process.env.NODE_ENV !== 'production' || process.env.IS_FLYIO === 'true') {
