@@ -21057,7 +21057,7 @@ createDefaultAdmin();
 
 // ==================== SERVER STARTUP ====================
 
-const PORT = process.env.PORT || 3000;
+//const PORT = process.env.PORT || 3000;
 
 // For Fly.io / self-hosted environments
 if (process.env.NODE_ENV !== 'production' || process.env.IS_FLYIO === 'true') {
