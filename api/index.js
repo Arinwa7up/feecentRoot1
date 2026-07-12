@@ -21020,7 +21020,7 @@ app.get("/api/sys/stats", authenticate, authorizeAdmin, async (req, res) => {
 });
 
 // Create default admin user
-const createDefaultAdmin = async () => {
+/*const createDefaultAdmin = async () => {
   try {
     const { data: existingAdmin } = await supabase
       .from("users")
@@ -21048,7 +21048,7 @@ const createDefaultAdmin = async () => {
   }
 };
 
-createDefaultAdmin();
+createDefaultAdmin();*/
 
 // Add this instead (required for Vercel)
 //module.exports = app;
