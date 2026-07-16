@@ -268,9 +268,6 @@ app.post(
   depositWebhookService.handleFlutterwaveWebhook,
 );
 
-const billsCatalogRouter = require("../lib/bills-catalog-routes");
-const billsAdminRouter = require("../lib/bills-admin-routes");
-
 // Cron sweep: retries any deposit webhooks that failed verification or
 // crediting on their first attempt.
 app.get("/api/cron/deposit-webhooks", depositWebhookService.cronHandler);
@@ -5716,15 +5713,7 @@ app.get(
         to_user_id: t.receiver_user_id,
         from_account_id: t.sender_account_id,
         to_account_id: t.receiver_account_id,
-        // No internal sender_user_id means the money came from outside
-        // (e.g. a Flutterwave deposit) — fall back to the counterparty
-        // fields captured on the transaction so the UI has a name to show
-        // instead of blank/"Sender".
-        from_user:
-          userDetails[t.sender_user_id] ||
-          (t.external_counterparty_name
-            ? { first_name: t.external_counterparty_name, last_name: "" }
-            : null),
+        from_user: userDetails[t.sender_user_id] || null,
         to_user: userDetails[t.receiver_user_id] || null,
         from_account: accountDetails[t.sender_account_id] || null,
         to_account: accountDetails[t.receiver_account_id] || null,
@@ -5781,20 +5770,6 @@ app.get(
         to_user_id: rawTransaction.receiver_user_id,
         from_account_id: rawTransaction.sender_account_id,
         to_account_id: rawTransaction.receiver_account_id,
-        // External counterparty (e.g. Flutterwave deposit sender, or an
-        // external payout beneficiary) has no internal user row to join
-        // against, so from_user/to_user come back null from the query
-        // above. Fall back to the counterparty fields captured at credit
-        // time so receipts show a real name instead of "Sender".
-        from_user:
-          rawTransaction.from_user ||
-          (rawTransaction.external_counterparty_name
-            ? {
-                first_name: rawTransaction.external_counterparty_name,
-                last_name: "",
-              }
-            : null),
-        to_user: rawTransaction.to_user || null,
       };
 
       // SECURITY CHECK: Failed transactions only visible to sender
@@ -8120,7 +8095,7 @@ app.get("/api/user/beneficiaries/recent", authenticate, async (req, res) => {
 
 // =========================Bills Sections =========================
 // Get bills
-/*app.get(
+app.get(
   "/api/user/bills",
   authenticate,
   checkAccountFrozen,
@@ -8181,7 +8156,7 @@ app.post(
       res.status(500).json({ error: "Failed to add bill" });
     }
   },
-);*/
+);
 
 // Pay bill
 /*app.post(
@@ -8286,10 +8261,6 @@ app.post(
 
 const billsService = require("../lib/bills-service");
 const billsWorker = require("../lib/bills-worker");
-
-app.use("/api/bills", authenticate, billsCatalogRouter);
-
-app.use("/api/sys/bills", authenticate, authorizeAdmin, billsAdminRouter);
 
 app.post(
   "/api/user/bills/verify-pin",
@@ -19115,9 +19086,7 @@ app.post(
       });
     } catch (error) {
       console.error("Admin virtual-account retry error:", error);
-      res
-        .status(500)
-        .json({ error: "Failed to retry virtual account creation" });
+      res.status(500).json({ error: "Failed to retry virtual account creation" });
     }
   },
 );
@@ -21377,38 +21346,6 @@ app.get("/api/sys/stats", authenticate, authorizeAdmin, async (req, res) => {
   }
 });
 
-// Create default admin user
-const createDefaultAdmin = async () => {
-  try {
-    const { data: existingAdmin } = await supabase
-      .from("users")
-      .select("email")
-      .eq("email", process.env.ADMIN_EMAIL)
-      .single();
-
-    if (!existingAdmin) {
-      const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
-
-      await supabase.from("users").insert({
-        email: process.env.ADMIN_EMAIL,
-        password_hash: hashedPassword,
-        first_name: "Admin",
-        last_name: "User",
-        role: "admin",
-        kyc_status: "verified",
-        is_active: true,
-      });
-
-      console.log("Default admin user created");
-    }
-  } catch (error) {
-    console.error("Error creating default admin:", error);
-  }
-};
-
-createDefaultAdmin();
-
-// Add this instead (required for Vercel)
 // ==================== SERVER STARTUP ====================
 
 const PORT = process.env.PORT || 3000;
@@ -21441,4 +21378,3 @@ if (!process.env.VERCEL && !process.env.IS_FLYIO && !process.env.NODE_ENV) {
     console.log(`🚀 Server running on port ${PORT}`);
   });
 }
-
