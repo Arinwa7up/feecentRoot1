@@ -733,12 +733,7 @@ async function sendActiveConversationsToAdmin() {
   io.to("admin_room").emit("active_conversations", sortedConversations);
 }
 
-// Replace app.listen with server.listen
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Socket.IO enabled for real-time chat`);
-});
+
 
 // Function to send push notification to user
 async function sendPushNotificationToUser(userId, title, body, data = {}) {
