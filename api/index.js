@@ -486,12 +486,7 @@ io.use(async (socket, next) => {
   }
 });
 
-// Replace app.listen with server.listen
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Socket.IO enabled for real-time chat`);
-});
+
 
 // Function to send push notification to user
 async function sendPushNotificationToUser(userId, title, body, data = {}) {
@@ -14949,6 +14944,212 @@ app.delete(
 // GET FLUTTERWAVE BANKS
 // ============================================================
 
+// ============================================================
+// ADD THESE ROUTES TO index.js
+// Place them near the existing /api/flutterwave/verify-account route
+// ============================================================
+
+const accountResolutionCache = require("../lib/account-resolution-cache");
+
+// ── RESOLVE ACCOUNT (cache-first) ──────────────────────────────────
+// Replaces direct provider calls. Frontend calls this instead of
+// /api/flutterwave/verify-account. Only falls back to provider if
+// cache misses.
+app.post(
+  "/api/accounts/resolve",
+  authenticate,
+  checkAccountFrozen,
+  async (req, res) => {
+    try {
+      const { account_number, bank_code } = req.body;
+
+      if (!account_number || !/^\d{10}$/.test(account_number)) {
+        return res.status(400).json({
+          error: "Invalid account number",
+          code: "INVALID_ACCOUNT_NUMBER",
+        });
+      }
+
+      // Step 1: Resolve from cache/beneficiaries
+      const resolution = await accountResolutionCache.resolveAccount({
+        accountNumber: account_number,
+        bankCode: bank_code || null,
+        userId: req.user.id,
+        maxResults: 5,
+      });
+
+      if (resolution.found) {
+        // Record the hit for analytics
+        if (resolution.results.length > 0) {
+          accountResolutionCache.recordHit(
+            account_number,
+            resolution.results[0].bank_code,
+          );
+        }
+
+        return res.json({
+          success: true,
+          source: resolution.source, // 'beneficiary' | 'cache'
+          results: resolution.results,
+          // If multiple banks match, frontend shows bank picker
+          multiple_banks: resolution.results.length > 1,
+        });
+      }
+
+      // Step 2: Cache miss — call provider API
+      if (!bank_code) {
+        // No bank specified and no cache hit — can't verify without bank
+        return res.json({
+          success: false,
+          needs_bank_selection: true,
+          message:
+            "Please select a bank to verify this account number.",
+        });
+      }
+
+      const providerResult = await accountResolutionCache.verifyViaProvider({
+        accountNumber: account_number,
+        bankCode: bank_code,
+        userId: req.user.id,
+      });
+
+      if (!providerResult.success) {
+        return res.status(404).json({
+          error: providerResult.error || "Account not found",
+          code: "ACCOUNT_NOT_FOUND",
+        });
+      }
+
+      return res.json({
+        success: true,
+        source: "provider",
+        results: [
+          {
+            account_number: account_number,
+            bank_code: bank_code,
+            account_name: providerResult.account_name,
+            confidence: "verified",
+          },
+        ],
+        multiple_banks: false,
+      });
+    } catch (error) {
+      console.error("[Resolve Account] Error:", error);
+      res.status(500).json({
+        error: "Account resolution failed",
+        code: "RESOLUTION_FAILED",
+      });
+    }
+  },
+);
+
+// ── GET USER BENEFICIARIES (for transfer form) ─────────────────────
+app.get(
+  "/api/user/beneficiaries",
+  authenticate,
+  async (req, res) => {
+    try {
+      const { limit = 10 } = req.query;
+      const beneficiaries =
+        await accountResolutionCache.getRecentBeneficiaries(
+          req.user.id,
+          parseInt(limit),
+        );
+      res.json({ success: true, beneficiaries });
+    } catch (error) {
+      console.error("[Beneficiaries] Error:", error);
+      res.status(500).json({ error: "Failed to load beneficiaries" });
+    }
+  },
+);
+
+// ── SAVE/PIN BENEFICIARY ───────────────────────────────────────────
+app.post(
+  "/api/user/beneficiaries",
+  authenticate,
+  async (req, res) => {
+    try {
+      const {
+        beneficiary_name,
+        account_number,
+        bank_code,
+        bank_name,
+        beneficiary_type = "external",
+        is_pinned = false,
+      } = req.body;
+
+      if (!beneficiary_name || !account_number || !bank_code) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const result = await accountResolutionCache.saveBeneficiary({
+        userId: req.user.id,
+        beneficiaryName: beneficiary_name,
+        accountNumber: account_number,
+        bankCode: bank_code,
+        bankName: bank_name,
+        beneficiaryType: beneficiary_type,
+        verificationSource: "manual",
+      });
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({ success: true, message: "Beneficiary saved" });
+    } catch (error) {
+      console.error("[Save Beneficiary] Error:", error);
+      res.status(500).json({ error: "Failed to save beneficiary" });
+    }
+  },
+);
+
+// ── DELETE BENEFICIARY ─────────────────────────────────────────────
+app.delete(
+  "/api/user/beneficiaries/:id",
+  authenticate,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { error } = await supabase
+        .from("beneficiaries")
+        .update({ is_active: false })
+        .eq("id", id)
+        .eq("user_id", req.user.id);
+
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Delete Beneficiary] Error:", error);
+      res.status(500).json({ error: "Failed to delete beneficiary" });
+    }
+  },
+);
+
+// ── PIN/UNPIN BENEFICIARY ──────────────────────────────────────────
+app.patch(
+  "/api/user/beneficiaries/:id/pin",
+  authenticate,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { is_pinned } = req.body;
+
+      const { error } = await supabase
+        .from("beneficiaries")
+        .update({ is_pinned: !!is_pinned })
+        .eq("id", id)
+        .eq("user_id", req.user.id);
+
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Pin Beneficiary] Error:", error);
+      res.status(500).json({ error: "Failed to update beneficiary" });
+    }
+  },
+);
+
 app.get("/api/flutterwave/banks", authenticate, async (req, res) => {
   try {
     // Check cache first (Redis recommended)
@@ -18038,4 +18239,37 @@ const createDefaultAdmin = async () => {
 createDefaultAdmin();
 
 // Add this instead (required for Vercel)
-module.exports = app;
+// ==================== SERVER STARTUP ====================
+
+const PORT = process.env.PORT || 3000;
+
+// For Fly.io / self-hosted environments
+if (process.env.NODE_ENV !== 'production' || process.env.IS_FLYIO === 'true') {
+  // Start the server normally for Fly.io
+  server.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📡 Socket.IO enabled for real-time chat`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔌 Database: ${process.env.SUPABASE_URL ? 'Connected' : 'Not Connected'}`);
+  });
+}
+
+// For Vercel serverless deployment
+if (process.env.VERCEL === '1') {
+  // Export for Vercel (no server.listen())
+  module.exports = app;
+} else {
+  // For Fly.io and other environments, we already started the server above
+  // But we also export for compatibility
+  module.exports = app;
+}
+
+// Also handle the case where neither is set (e.g., local development)
+if (!process.env.VERCEL && !process.env.IS_FLYIO && !process.env.NODE_ENV) {
+  // Default to running the server
+  server.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+  });
+}
+
+
